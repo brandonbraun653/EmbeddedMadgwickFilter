@@ -15,10 +15,11 @@
 
 /* Necessary file for the filter */
 #include "madgwick.hpp"
+#include "MadgwickAHRS.h"
 
-#define SAMPLE_RATE 0.1 //sec
+#define SAMPLE_RATE 0.01 //sec
 #define BETA 0.01
-typedef double precisionType;
+typedef float precisionType;
 
 int main(void)
 {
@@ -56,13 +57,13 @@ int main(void)
 	sensor_settings.gCSPin = PIN_6;
 	sensor_settings.gCSPort = GPIOF;
 				   
-	sensor_settings.scale.accel = A_SCALE_2G;
+	sensor_settings.scale.accel = A_SCALE_4G;
 	sensor_settings.scale.mag = M_SCALE_2GS;
-	sensor_settings.scale.gyro = G_SCALE_245DPS;
+	sensor_settings.scale.gyro = G_SCALE_2000DPS;
 				   
-	sensor_settings.odr.accel = A_ODR_50;
-	sensor_settings.odr.mag = M_ODR_50;
-	sensor_settings.odr.gyro = G_ODR_190_BW_125;
+	sensor_settings.odr.accel = A_ODR_200;
+	sensor_settings.odr.mag = M_ODR_100;
+	sensor_settings.odr.gyro = G_ODR_190_BW_70;
 	
 	/* Create the new sensor object */
 	LSM9DS0 sensor(sensor_settings);
@@ -70,30 +71,50 @@ int main(void)
 	
 	
 	/* Initialize the Madgwick Filter */
-	MadgwickFilter<precisionType> AHRS(SAMPLE_RATE, BETA);
 	Eigen::Quaternion<precisionType> orientation;
 	Vector3<precisionType> accel;
 	Vector3<precisionType> gyro;
 	Vector3<precisionType> mag;
 	
+	Madgwick MF;
+	MF.begin(1000.0f);
+
+	float roll, pitch, yaw;
+	
+	int counter = 0;
+
 	for (;;)
 	{
-		sensor.read(ALL);
+		if (counter == 100)
+		{
+			sensor.read(ALL);
+
+			accel.x = sensor.accel_data_raw.x;
+			accel.y = sensor.accel_data_raw.y;
+			accel.z = sensor.accel_data_raw.z;
+
+			gyro.x = sensor.gyro_data.x;
+			gyro.y = sensor.gyro_data.y;
+			gyro.z = sensor.gyro_data.z;
+
+			mag.x = sensor.mag_data.x;
+			mag.y = sensor.mag_data.y;
+			mag.z = sensor.mag_data.z;
+
+			counter = 0;
+		}
 		
-		accel.x = sensor.accel_data.x;
-		accel.y = sensor.accel_data.y;
-		accel.z = sensor.accel_data.z;
 		
-		gyro.x = sensor.gyro_data.x;
-		gyro.y = sensor.gyro_data.y;
-		gyro.z = sensor.gyro_data.z;
 		
-		mag.x = sensor.mag_data.x;
-		mag.y = sensor.mag_data.y;
-		mag.z = sensor.mag_data.z;
 		
-		orientation = AHRS.estimate(accel, gyro, mag);
-		
-		HAL_Delay((uint32_t)(SAMPLE_RATE*1000.0));
+		//orientation = AHRS.estimate(accel, gyro, mag);
+		MF.update(gyro.x, gyro.y, gyro.z, accel.x, accel.y, accel.z, mag.x, mag.y, mag.z);
+
+		roll = MF.getRoll();
+		pitch = MF.getPitch();
+		yaw = MF.getYaw();
+
+		HAL_Delay(1);
+		counter++;
 	}
 }
