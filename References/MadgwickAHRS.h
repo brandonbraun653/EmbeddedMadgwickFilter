@@ -29,6 +29,7 @@ private:
     float q2;
     float q3;	// quaternion of sensor frame relative to auxiliary frame
     float invSampleFreq;
+	float sampleFreq;
     float roll;
     float pitch;
     float yaw;
@@ -39,20 +40,26 @@ private:
 // Function declarations
 public:
     Madgwick(void);
-    void begin(float sampleFrequency) { invSampleFreq = 1.0f / sampleFrequency; }
+    void begin(float sampleFrequency, float beta_coeff) 
+	{ 
+	    invSampleFreq = 1.0f / sampleFrequency; 
+	    sampleFreq = sampleFrequency;
+		beta = beta_coeff;
+	}
+	
     void update(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz);
     void updateIMU(float gx, float gy, float gz, float ax, float ay, float az);
 
     float getRoll() {
-        if (!anglesComputed) computeAngles();
+        computeAngles();
         return roll * 57.29578f;
     }
     float getPitch() {
-        if (!anglesComputed) computeAngles();
+        computeAngles();
         return pitch * 57.29578f;
     }
     float getYaw() {
-        if (!anglesComputed) computeAngles();
+        computeAngles();
         return yaw * 57.29578f + 180.0f;
     }
     float getRollRadians() {
