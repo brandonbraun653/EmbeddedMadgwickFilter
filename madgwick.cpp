@@ -4,7 +4,7 @@
 MadgwickFilter::MadgwickFilter(const float sampleFrequency, const float beta_coeff)
 {
 	sampleFreq = sampleFrequency;
-	invSampleFreq = 1.0 / sampleFrequency;
+	invSampleFreq = 1.0f / sampleFrequency;
 	beta = beta_coeff;
 	
 	outputQuaternion.w() = 1.0f;
@@ -20,7 +20,7 @@ MadgwickFilter::~MadgwickFilter()
 
 void MadgwickFilter::update(Eigen::Vector3f accelerometer, Eigen::Vector3f gyroscope, Eigen::Vector3f magnetometer)
 {
-	if (magnetometer(X) == 0.0 && magnetometer(Y) == 0.0 && magnetometer(Z) == 0.0)
+	if (magnetometer(X) == 0.0f && magnetometer(Y) == 0.0f && magnetometer(Z) == 0.0f)
 		update6DOF(accelerometer, gyroscope);
 	else
 		update9DOF(accelerometer, gyroscope, magnetometer);
