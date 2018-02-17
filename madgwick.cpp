@@ -1,5 +1,7 @@
 #include "madgwick.hpp"
 
+/* Bulk of the source code is taken from the open source library here:
+http://x-io.co.uk/open-source-imu-and-ahrs-algorithms/ */
 
 MadgwickFilter::MadgwickFilter(const float sampleFrequency, const float beta_coeff)
 {
@@ -13,20 +15,12 @@ MadgwickFilter::MadgwickFilter(const float sampleFrequency, const float beta_coe
 	outputQuaternion.z() = 0.0f;
 }
 
-MadgwickFilter::~MadgwickFilter()
-{
-}
-
-
 void MadgwickFilter::update(Eigen::Vector3f accelerometer, Eigen::Vector3f gyroscope, Eigen::Vector3f magnetometer)
 {
 	if (magnetometer(X) == 0.0f && magnetometer(Y) == 0.0f && magnetometer(Z) == 0.0f)
 		update6DOF(accelerometer, gyroscope);
 	else
 		update9DOF(accelerometer, gyroscope, magnetometer);
-	
-	
-	//Do any other filtering here 
 }
 
 void MadgwickFilter::getEulerRad(Eigen::Vector3f& eulerRad)
@@ -46,10 +40,91 @@ void MadgwickFilter::getQuaternion(Eigen::Quaternion<float>& quaternion)
 	quaternion = outputQuaternion;
 }
 
-
 void MadgwickFilter::update6DOF(Eigen::Vector3f accelerometer, Eigen::Vector3f gyroscope)
 {
-	
+	float recipNorm;
+	float s0, s1, s2, s3;
+	float qDot1, qDot2, qDot3, qDot4;
+	float _2q0, _2q1, _2q2, _2q3, _4q0, _4q1, _4q2, _8q1, _8q2, q0q0, q1q1, q2q2, q3q3;
+
+	/*----------------------------------
+	* Perform any necessary unit conversions
+	*---------------------------------*/
+	gyroscope *= 0.0174533f; /* deg/s => rad/s */
+
+	/*----------------------------------
+	* Assign variables to the nomenclature used by O.H. Sebastian in [1]
+	*---------------------------------*/
+	ax = accelerometer(X); gx = gyroscope(X);
+	ay = accelerometer(Y); gy = gyroscope(Y);
+	az = accelerometer(Z); gz = gyroscope(Z);
+
+	/* Notation from eq(1) pg.4 */
+	q0 = outputQuaternion.w();
+	q1 = outputQuaternion.x();
+	q2 = outputQuaternion.y();
+	q3 = outputQuaternion.z();
+
+	// Rate of change of quaternion from gyroscope
+	qDot1 = 0.5f * (-q1 * gx - q2 * gy - q3 * gz);
+	qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
+	qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
+	qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
+
+	// Compute feedback only if accelerometer measurement valid (avoids NaN in accelerometer normalization)
+	if (!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
+
+		// Normalise accelerometer measurement
+		recipNorm = invSqrt(ax * ax + ay * ay + az * az);
+		ax *= recipNorm;
+		ay *= recipNorm;
+		az *= recipNorm;
+
+		// Auxiliary variables to avoid repeated arithmetic
+		_2q0 = 2.0f * q0;
+		_2q1 = 2.0f * q1;
+		_2q2 = 2.0f * q2;
+		_2q3 = 2.0f * q3;
+		_4q0 = 4.0f * q0;
+		_4q1 = 4.0f * q1;
+		_4q2 = 4.0f * q2;
+		_8q1 = 8.0f * q1;
+		_8q2 = 8.0f * q2;
+		q0q0 = q0 * q0;
+		q1q1 = q1 * q1;
+		q2q2 = q2 * q2;
+		q3q3 = q3 * q3;
+
+		// Gradient decent algorithm corrective step
+		s0 = _4q0 * q2q2 + _2q2 * ax + _4q0 * q1q1 - _2q1 * ay;
+		s1 = _4q1 * q3q3 - _2q3 * ax + 4.0f * q0q0 * q1 - _2q0 * ay - _4q1 + _8q1 * q1q1 + _8q1 * q2q2 + _4q1 * az;
+		s2 = 4.0f * q0q0 * q2 + _2q0 * ax + _4q2 * q3q3 - _2q3 * ay - _4q2 + _8q2 * q1q1 + _8q2 * q2q2 + _4q2 * az;
+		s3 = 4.0f * q1q1 * q3 - _2q1 * ax + 4.0f * q2q2 * q3 - _2q2 * ay;
+		recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3); // normalise step magnitude
+		s0 *= recipNorm;
+		s1 *= recipNorm;
+		s2 *= recipNorm;
+		s3 *= recipNorm;
+
+		// Apply feedback step
+		qDot1 -= beta * s0;
+		qDot2 -= beta * s1;
+		qDot3 -= beta * s2;
+		qDot4 -= beta * s3;
+	}
+
+	// Integrate rate of change of quaternion to yield quaternion
+	q0 += qDot1 * (1.0f / sampleFreq);
+	q1 += qDot2 * (1.0f / sampleFreq);
+	q2 += qDot3 * (1.0f / sampleFreq);
+	q3 += qDot4 * (1.0f / sampleFreq);
+
+	// Normalize quaternion
+	recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+	q0 *= recipNorm;
+	q1 *= recipNorm;
+	q2 *= recipNorm;
+	q3 *= recipNorm;
 }
 
 void MadgwickFilter::update9DOF(Eigen::Vector3f accelerometer, Eigen::Vector3f gyroscope, Eigen::Vector3f magnetometer)
@@ -64,7 +139,6 @@ void MadgwickFilter::update9DOF(Eigen::Vector3f accelerometer, Eigen::Vector3f g
 	* Perform any necessary unit conversions 
 	*---------------------------------*/
 	gyroscope *= 0.0174533f; /* deg/s => rad/s */
-	
 	
 	/*----------------------------------
 	* Assign variables to the nomenclature used by O.H. Sebastian in [1]

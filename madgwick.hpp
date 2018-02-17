@@ -13,7 +13,7 @@ class MadgwickFilter
 {
 public:		
 	MadgwickFilter(const float sampleFrequency, const float beta_coeff);
-	~MadgwickFilter();
+	~MadgwickFilter() = default;
 	
 	/** 
 	 * Iterates the Madgwick algorithm once with the given input data.
